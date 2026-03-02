@@ -43,7 +43,20 @@
   .dropdown-icon { font-size: 1rem; width: 20px; text-align: center; }
   .dropdown-sep { height: 1px; background: rgba(255,255,255,0.07); margin: 3px 6px; }
   .dropdown-header { padding: 6px 12px 4px; font-size: 0.55rem; letter-spacing: 0.15em; color: rgba(255,255,255,0.3); text-transform: uppercase; }
-  #loading-overlay { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; z-index: 200; transition: opacity 0.6s; }
+  #tap-to-enter {
+    position: fixed; inset: 0; background: #000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px; z-index: 300; cursor: pointer; transition: opacity 0.5s;
+  }
+  #tap-to-enter.hide { opacity: 0; pointer-events: none; }
+  .tte-title { font-size: 1rem; font-weight: 300; letter-spacing: 0.25em; color: rgba(255,255,255,0.7); }
+  .tte-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.15);
+    padding: 12px 28px; border-radius: 40px; background: rgba(255,255,255,0.05);
+    transition: all 0.2s; cursor: pointer;
+  }
+  .tte-btn:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3); }
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
   .loading-title { font-size: 1rem; font-weight: 300; letter-spacing: 0.25em; color: rgba(255,255,255,0.6); }
   .loading-msg { font-size: 0.65rem; letter-spacing: 0.12em; color: rgba(255,255,255,0.3); }
@@ -98,7 +111,12 @@
   </div>
 </div>
 
-<div id="loading-overlay">
+<div id="tap-to-enter">
+  <div class="tte-title">GET IN DA BOOTH</div>
+  <div class="tte-btn">tap to enter</div>
+</div>
+
+<div id="loading-overlay" style="display:none">
   <div class="loading-title">GET IN DA BOOTH</div>
   <div class="loading-bar"></div>
   <div class="loading-msg" id="loading-msg">requesting camera access</div>
@@ -108,9 +126,14 @@
 // ── Audio ─────────────────────────────────────────────────────────────────
 let actx;
 function getCtx() { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; }
+
+// Intro sound — plays on load screen
+const introAudio = new Audio('./latto_get_in_da_booth.mp3');
+introAudio.volume = 1.0;
+
 const sounds = {
   // youtube to mp3 converter - https://notube.net/en/youtube-app-317
-  ah:    new Audio('./ah_3.mp3'),
+  ah:    new Audio('./ah_short.mp3'),
   quack: new Audio('./quack.mp3'),
   fahh:  new Audio('./fahh.mp3'),
   // wow:   new Audio('./wow.mp3'),
@@ -126,7 +149,7 @@ function playAh()       { playSound('ah'); }
 function playQuack()    { playSound('quack'); }
 function playGunshot()  { playSound('gun'); }
 function playHeart()    { playSound('heart'); }
-function playSurprise() { playSound('wow'); }
+function playSurprise() { if (sounds.wow) playSound('wow'); }
 function playFahh()     { playSound('fahh'); }
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -306,6 +329,7 @@ async function loadHandpose() {
   try {
     await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.11.0/dist/tf-core.min.js');
     await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.11.0/dist/tf-backend-webgl.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.11.0/dist/tf-converter.min.js');
     await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js');
     await tf.setBackend('webgl');
     await tf.ready();
@@ -360,11 +384,15 @@ async function init() {
     await new Promise(r => { video.onloadedmetadata = r; });
     msg.textContent = 'loading models';
     const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
+
+    // Load models + enforce 5 second minimum loading screen in parallel
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      new Promise(r => setTimeout(r, 5000)),
     ]);
+
     modelsLoaded = true;
     document.getElementById('live-dot').classList.add('on');
     document.getElementById('live-text').textContent = 'live';
@@ -421,7 +449,21 @@ document.addEventListener('click', () => {
   dropdown.classList.remove('open'); optionsBtn.classList.remove('active');
 });
 
-window.addEventListener('load', init);
+window.addEventListener('load', () => {
+  const tte = document.getElementById('tap-to-enter');
+  const overlay = document.getElementById('loading-overlay');
+  tte.addEventListener('click', () => {
+    // This click unlocks audio in the browser
+    getCtx();
+    introAudio.play().catch(()=>{});
+    tte.classList.add('hide');
+    setTimeout(() => {
+      tte.style.display = 'none';
+      overlay.style.display = 'flex';
+    }, 500);
+    init();
+  });
+});
 </script>
 </body>
 </html>
