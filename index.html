@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>shenan booth</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── Full-screen video ── */
+  #video {
+    position: fixed;
+    inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    display: block;
+  }
+
+  /* ── Emotion color wash overlay ── */
+  #emotion-wash {
+    position: fixed;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s, background 0.6s;
+    mix-blend-mode: color;
+  }
+
+  /* ── Shock flash ── */
+  #shock-flash {
+    position: fixed;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.05s;
+  }
+
+  /* ── Subtle vignette like Photo Booth ── */
+  .vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+  }
+
+  /* ── Top title bar ── */
+  .title-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 20px 28px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .title-bar h1 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.7);
+  }
+
+  /* ── Live indicator ── */
+  .live-pip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.45);
+    pointer-events: none;
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #555;
+    transition: background 0.4s;
+  }
+  .live-dot.on { background: #4ade80; box-shadow: 0 0 6px #4ade80; animation: blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Trigger label center screen ── */
+  #trigger-label {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 1px 12px rgba(0,0,0,0.6);
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* ── Emotion readout top-left on-screen ── */
+  #emotion-readout {
+    position: fixed;
+    top: 60px;
+    left: 28px;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.55);
+    opacity: 0;
+    transition: opacity 0.4s;
+    pointer-events: none;
+    line-height: 1.8;
+  }
+  #emotion-readout.visible { opacity: 1; }
+  #emotion-readout .emo-label { font-size: 0.6rem; color: rgba(255,255,255,0.3); }
+  #emotion-readout .emo-val { font-weight: 500; color: rgba(255,255,255,0.8); }
+
+  /* ── Detection log top-right ── */
+  #detect-log {
+    position: fixed;
+    top: 60px;
+    right: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    pointer-events: none;
+  }
+  .log-entry {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.5);
+    background: rgba(0,0,0,0.3);
+    backdrop-filter: blur(6px);
+    padding: 4px 10px;
+    border-radius: 20px;
+    animation: fadeUp 0.3s ease;
+    white-space: nowrap;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Floating side menu ── */
+  #side-menu {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    z-index: 100;
+  }
+
+  /* Pill buttons */
+  .menu-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(20,20,20,0.72);
+    backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 40px;
+    padding: 10px 16px 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    color: rgba(255,255,255,0.75);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .menu-pill:hover {
+    background: rgba(35,35,35,0.85);
+    border-color: rgba(255,255,255,0.22);
+    color: rgba(255,255,255,0.95);
+  }
+  .menu-pill.active {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.3);
+    color: #fff;
+  }
+  .pill-emoji { font-size: 1.1rem; line-height: 1; }
+  .pill-label { font-size: 0.65rem; letter-spacing: 0.1em; }
+
+  /* Gesture dropdown */
+  #gesture-dropdown {
+    background: rgba(20,20,20,0.82);
+    backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 200px;
+  }
+  #gesture-dropdown.open { display: flex; }
+
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+    color: rgba(255,255,255,0.7);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dropdown-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .dropdown-item.selected { background: rgba(255,255,255,0.1); color: #fff; }
+  .dropdown-item.selected::after { content: '✓'; margin-left: auto; opacity: 0.6; font-size: 0.6rem; }
+  .dropdown-icon { font-size: 1rem; width: 20px; text-align: center; }
+  .dropdown-sep {
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+    margin: 3px 6px;
+  }
+  .dropdown-header {
+    padding: 6px 12px 4px;
+    font-size: 0.55rem;
+    letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+  }
+
+  /* ── Loading overlay ── */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 200;
+    transition: opacity 0.6s;
+  }
+  #loading-overlay.fade { opacity: 0; pointer-events: none; }
+
+  .loading-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 1rem;
+    font-weight: 300;
+    letter-spacing: 0.25em;
+    color: rgba(255,255,255,0.6);
+  }
+  .loading-msg {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.3);
+  }
+  .loading-bar {
+    width: 120px;
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .loading-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -50%;
+    width: 50%; height: 100%;
+    background: rgba(255,255,255,0.5);
+    animation: scan 1.4s ease-in-out infinite;
+  }
+  @keyframes scan { 0%{left:-50%} 100%{left:150%} }
+
+  /* shock zoom */
+  .shock-zoom { animation: shockZoom 0.7s ease-out; }
+  @keyframes shockZoom {
+    0%{ transform: scaleX(-1) scale(1); }
+    25%{ transform: scaleX(-1) scale(1.08); }
+    100%{ transform: scaleX(-1) scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<video id="video" autoplay muted playsinline></video>
+<div id="emotion-wash"></div>
+<div id="shock-flash"></div>
+<div class="vignette"></div>
+
+<!-- Top bar -->
+<div class="title-bar">
+  <h1>shenan booth</h1>
+  <div class="live-pip">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-text">loading</span>
+  </div>
+</div>
+
+<!-- Emotion readout (top left, visible when emotion mode on) -->
+<div id="emotion-readout">
+  <div class="emo-label">detecting</div>
+  <div class="emo-val" id="emo-val">—</div>
+</div>
+
+<!-- Detection log (top right) -->
+<div id="detect-log"></div>
+
+<!-- Trigger label -->
+<div id="trigger-label"></div>
+
+<!-- Floating side menu -->
+<div id="side-menu">
+
+  <!-- Emotion toggle -->
+  <div class="menu-pill" id="emotion-btn" title="detect emotion?">
+    <span class="pill-emoji" id="emotion-emoji">😶</span>
+    <span class="pill-label" id="emotion-label">detect emotion?</span>
+  </div>
+
+  <!-- Gesture options -->
+  <div class="menu-pill" id="options-btn">
+    <span class="pill-emoji">🎭</span>
+    <span class="pill-label">options</span>
+  </div>
+
+  <!-- Dropdown -->
+  <div id="gesture-dropdown">
+    <div class="dropdown-header">gesture sounds</div>
+    <div class="dropdown-item" data-gesture="tongue">
+      <span class="dropdown-icon">👅</span> tongue out → ah!
+    </div>
+    <div class="dropdown-item" data-gesture="duck">
+      <span class="dropdown-icon">🦆</span> duck face → quack
+    </div>
+    <div class="dropdown-item" data-gesture="gun">
+      <span class="dropdown-icon">🔫</span> finger gun → bang
+    </div>
+    <div class="dropdown-item" data-gesture="heart">
+      <span class="dropdown-icon">🫰</span> korean heart → ♡
+    </div>
+    <div class="dropdown-sep"></div>
+    <div class="dropdown-header">all gestures on</div>
+    <div class="dropdown-item selected" data-gesture="all">
+      <span class="dropdown-icon">✨</span> enable all
+    </div>
+  </div>
+
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="loading-title">shenan booth</div>
+  <div class="loading-bar"></div>
+  <div class="loading-msg" id="loading-msg">requesting camera access</div>
+</div>
+
+<script>
+// ── Audio ──────────────────────────────────────────────────────────────────
+let actx;
+function getCtx() { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; }
+
+function playAh() {
+  const ctx = getCtx(), now = ctx.currentTime;
+  for (let i = 0; i < 3; i++) {
+    const osc = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 800 + i * 300; f.Q.value = 2;
+    osc.connect(f); f.connect(g); g.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220 + i * 30, now);
+    osc.frequency.exponentialRampToValueAtTime(340 + i * 20, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.25);
+    g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3/(i+1), now+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now); osc.stop(now + 0.35);
+  }
+}
+
+function playQuack() {
+  const ctx = getCtx(), now = ctx.currentTime;
+  const osc = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = 1200; f.Q.value = 3;
+  osc.connect(f); f.connect(g); g.connect(ctx.destination);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(300, now);
+  osc.frequency.exponentialRampToValueAtTime(200, now+0.05);
+  osc.frequency.exponentialRampToValueAtTime(280, now+0.15);
+  osc.frequency.exponentialRampToValueAtTime(150, now+0.3);
+  g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.6, now+0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, now+0.35);
+  osc.start(now); osc.stop(now+0.4);
+}
+
+function playGunshot() {
+  const ctx = getCtx(), now = ctx.currentTime;
+  const buf = ctx.createBuffer(1, ctx.sampleRate*0.3, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 3);
+  const src = ctx.createBufferSource(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 800;
+  src.buffer = buf; src.connect(f); f.connect(g); g.connect(ctx.destination);
+  g.gain.setValueAtTime(1.5, now); g.gain.exponentialRampToValueAtTime(0.001, now+0.25);
+  src.start(now);
+}
+
+function playHeart() {
+  const ctx = getCtx(), now = ctx.currentTime;
+  [523,659,784,1047].forEach((freq, i) => {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = 'sine'; osc.frequency.value = freq;
+    const t = now + i * 0.08;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t+0.5);
+    osc.start(t); osc.stop(t+0.55);
+  });
+}
+
+function playSurprise() {
+  const ctx = getCtx(), now = ctx.currentTime;
+  [200,250,315,400].forEach((f, i) => {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = 'sawtooth'; osc.frequency.value = f;
+    g.gain.setValueAtTime(0.15, now+i*0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now+0.4+i*0.04);
+    osc.start(now+i*0.04); osc.stop(now+0.5);
+  });
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+let emotionMode = false;
+let modelsLoaded = false;
+let isRunning = false;
+let enabledGestures = new Set(['tongue','duck','gun','heart']); // all on by default
+let lastEmotionTrigger = 0;
+let lastGestureTrigger = {};
+let currentEmotion = '';
+let frameCount = 0;
+let handposeModel = null;
+let tfLoaded = false;
+const ECOOL = 2500, GCOOL = 2000;
+
+const video = document.getElementById('video');
+const emotionWash = document.getElementById('emotion-wash');
+const shockFlash = document.getElementById('shock-flash');
+const triggerLabel = document.getElementById('trigger-label');
+const emotionReadout = document.getElementById('emotion-readout');
+const emoVal = document.getElementById('emo-val');
+const detectLog = document.getElementById('detect-log');
+
+// ── Emotion config ────────────────────────────────────────────────────────
+const EMO = {
+  happy:     { emoji:'😄', wash:'rgba(255,210,0,0.35)',   label:'happy',    filter:'saturate(1.6) brightness(1.1)' },
+  sad:       { emoji:'😢', wash:'rgba(50,80,255,0.3)',    label:'sad',      filter:'saturate(0.35) hue-rotate(210deg)' },
+  angry:     { emoji:'😡', wash:'rgba(220,20,20,0.32)',   label:'angry',    filter:'saturate(1.8) hue-rotate(-15deg)' },
+  surprised: { emoji:'😱', wash:'rgba(160,0,255,0.22)',   label:'shocked',  filter:'contrast(1.25) saturate(1.4)' },
+  disgusted: { emoji:'🤢', wash:'rgba(0,180,60,0.28)',    label:'disgusted',filter:'saturate(0.5) hue-rotate(95deg)' },
+  fearful:   { emoji:'😨', wash:'rgba(80,0,180,0.3)',     label:'fearful',  filter:'saturate(0.2) brightness(0.75)' },
+  neutral:   { emoji:'😐', wash:'transparent',            label:'neutral',  filter:'none' },
+};
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+let labelTimer;
+function showLabel(text) {
+  triggerLabel.textContent = text;
+  triggerLabel.style.opacity = '1';
+  clearTimeout(labelTimer);
+  labelTimer = setTimeout(() => { triggerLabel.style.opacity = '0'; }, 1800);
+}
+
+function addLog(text) {
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.textContent = text;
+  detectLog.insertBefore(el, detectLog.firstChild);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.5s'; setTimeout(() => el.remove(), 500); }, 3500);
+}
+
+// ── Emotion handler ────────────────────────────────────────────────────────
+function handleEmotion(expr, conf) {
+  const cfg = EMO[expr]; if (!cfg) return;
+  if (emotionMode) {
+    emoVal.textContent = `${cfg.emoji} ${cfg.label} ${Math.round(conf*100)}%`;
+    video.style.filter = cfg.filter;
+    if (expr === 'neutral') {
+      emotionWash.style.opacity = '0';
+    } else {
+      emotionWash.style.background = cfg.wash;
+      emotionWash.style.opacity = '1';
+    }
+  }
+  const now = Date.now();
+  if (expr === 'surprised' && conf > 0.72 && expr !== currentEmotion) {
+    if (now - lastEmotionTrigger > ECOOL) {
+      lastEmotionTrigger = now;
+      playSurprise();
+      video.classList.add('shock-zoom');
+      shockFlash.style.opacity = '0.5';
+      setTimeout(() => { shockFlash.style.opacity = '0'; }, 80);
+      setTimeout(() => { video.classList.remove('shock-zoom'); }, 700);
+      showLabel('😱 shocked');
+      addLog('😱 shocked');
+    }
+  } else if (expr !== currentEmotion && expr !== 'neutral' && conf > 0.62) {
+    if (now - lastEmotionTrigger > ECOOL) {
+      lastEmotionTrigger = now;
+      addLog(`${cfg.emoji} ${cfg.label}`);
+    }
+  }
+  currentEmotion = expr;
+}
+
+// ── Face gesture detection ─────────────────────────────────────────────────
+function checkFaceGestures(landmarks) {
+  const pts = landmarks.positions;
+  const now = Date.now();
+  const upperLip = pts[51], lowerLip = pts[57];
+  const leftCorner = pts[48], rightCorner = pts[54];
+  const mouthW = Math.hypot(rightCorner.x-leftCorner.x, rightCorner.y-leftCorner.y);
+  const mouthH = Math.hypot(upperLip.x-lowerLip.x, upperLip.y-lowerLip.y);
+  const openR = mouthH / mouthW;
+  const faceW = Math.hypot(pts[16].x-pts[0].x, pts[16].y-pts[0].y);
+  const mouthWR = mouthW / faceW;
+
+  if (enabledGestures.has('tongue') && openR > 0.55) {
+    if (!lastGestureTrigger.tongue || now - lastGestureTrigger.tongue > GCOOL) {
+      lastGestureTrigger.tongue = now; playAh(); showLabel('👅 ah!'); addLog('👅 tongue out → ah!');
+    }
+    return;
+  }
+  if (enabledGestures.has('duck') && mouthWR < 0.25 && openR > 0.04 && openR < 0.2) {
+    if (!lastGestureTrigger.duck || now - lastGestureTrigger.duck > GCOOL) {
+      lastGestureTrigger.duck = now; playQuack(); showLabel('🦆 quack'); addLog('🦆 duck face → quack');
+    }
+  }
+}
+
+// ── Hand gestures ──────────────────────────────────────────────────────────
+function d3(kp, a, b) {
+  return Math.sqrt((kp[a].x-kp[b].x)**2+(kp[a].y-kp[b].y)**2+((kp[a].z||0)-(kp[b].z||0))**2);
+}
+function extd(kp, tip, pip, mcp) { return kp[tip].y < kp[pip].y && kp[pip].y < kp[mcp].y; }
+
+function detectHandGestures(hands) {
+  if (!hands?.length) return;
+  const now = Date.now();
+  for (const hand of hands) {
+    const kp = hand.keypoints; if (!kp || kp.length < 21) continue;
+    const idxExt = extd(kp,8,6,5), midExt = extd(kp,12,10,9), rngExt = extd(kp,16,14,13), pnkExt = extd(kp,20,18,17);
+    const hs = d3(kp,0,9);
+    const thumbDist = d3(kp,4,5); const thumbExt = thumbDist/hs > 0.5;
+
+    if (enabledGestures.has('gun') && idxExt && thumbExt && !midExt && !rngExt && !pnkExt) {
+      if (!lastGestureTrigger.gun || now - lastGestureTrigger.gun > GCOOL) {
+        lastGestureTrigger.gun = now; playGunshot(); showLabel('🔫 bang'); addLog('🔫 finger gun → bang');
+      }
+      return;
+    }
+    const tiDist = d3(kp,4,8);
+    if (enabledGestures.has('heart') && tiDist/hs < 0.3 && !midExt && !rngExt && !pnkExt) {
+      if (!lastGestureTrigger.heart || now - lastGestureTrigger.heart > GCOOL) {
+        lastGestureTrigger.heart = now; playHeart(); showLabel('🫰 ♡'); addLog('🫰 korean heart → ♡');
+      }
+      return;
+    }
+  }
+  if (hands.length === 2 && enabledGestures.has('heart')) {
+    const h1 = hands[0].keypoints, h2 = hands[1].keypoints;
+    const hs = d3(h1,0,9);
+    const wDist = Math.hypot(h1[0].x-h2[0].x, h1[0].y-h2[0].y);
+    if (wDist/hs < 1.5) {
+      if (!lastGestureTrigger.bigheart || Date.now() - lastGestureTrigger.bigheart > GCOOL) {
+        lastGestureTrigger.bigheart = Date.now(); playHeart(); showLabel('♡ heart'); addLog('🤗 double heart → ♡');
+      }
+    }
+  }
+}
+
+// ── Detection loop ─────────────────────────────────────────────────────────
+async function detectionLoop() {
+  if (!isRunning) return;
+  frameCount++;
+  try {
+    if (modelsLoaded && frameCount % 2 === 0) {
+      const dets = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+        .withFaceLandmarks(true)
+        .withFaceExpressions();
+      if (dets.length > 0) {
+        const det = dets[0];
+        if (det.expressions) {
+          const [expr, conf] = Object.entries(det.expressions).sort((a,b) => b[1]-a[1])[0];
+          handleEmotion(expr, conf);
+        }
+        if (det.landmarks) checkFaceGestures(det.landmarks);
+      } else {
+        if (emotionMode) { video.style.filter = 'none'; emotionWash.style.opacity = '0'; emoVal.textContent = '—'; }
+      }
+    }
+    if (tfLoaded && handposeModel && frameCount % 4 === 0) {
+      const hands = await handposeModel.estimateHands(video);
+      detectHandGestures(hands);
+    }
+  } catch(e) {}
+  requestAnimationFrame(detectionLoop);
+}
+
+// ── Handpose loader ────────────────────────────────────────────────────────
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function loadHandpose() {
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js');
+    handposeModel = await handPoseDetection.createDetector(
+      handPoseDetection.SupportedModels.MediaPipeHands,
+      { runtime: 'tfjs', modelType: 'lite', maxHands: 2 }
+    );
+    tfLoaded = true;
+  } catch(e) { console.warn('handpose failed', e); }
+}
+
+// ── Camera + model init ────────────────────────────────────────────────────
+async function init() {
+  const overlay = document.getElementById('loading-overlay');
+  const msg = document.getElementById('loading-msg');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+    video.srcObject = stream;
+    await new Promise(r => { video.onloadedmetadata = r; });
+    msg.textContent = 'loading models';
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+    ]);
+    modelsLoaded = true;
+    document.getElementById('live-dot').classList.add('on');
+    document.getElementById('live-text').textContent = 'live';
+    overlay.classList.add('fade');
+    setTimeout(() => { overlay.style.display = 'none'; }, 700);
+    isRunning = true;
+    loadHandpose();
+    requestAnimationFrame(detectionLoop);
+  } catch(e) {
+    msg.textContent = 'error: ' + e.message;
+  }
+}
+
+// ── Emotion toggle ─────────────────────────────────────────────────────────
+const emotionBtn = document.getElementById('emotion-btn');
+const emotionEmojiEl = document.getElementById('emotion-emoji');
+const emotionLabelEl = document.getElementById('emotion-label');
+
+emotionBtn.addEventListener('click', () => {
+  if (!modelsLoaded) return;
+  getCtx();
+  emotionMode = !emotionMode;
+  emotionBtn.classList.toggle('active', emotionMode);
+  if (emotionMode) {
+    emotionEmojiEl.textContent = '🙂';
+    emotionLabelEl.textContent = 'stop detecting';
+    emotionReadout.classList.add('visible');
+  } else {
+    emotionEmojiEl.textContent = '😶';
+    emotionLabelEl.textContent = 'detect emotion?';
+    emotionReadout.classList.remove('visible');
+    video.style.filter = 'none';
+    emotionWash.style.opacity = '0';
+    emoVal.textContent = '—';
+    currentEmotion = '';
+  }
+});
+
+// ── Options dropdown ───────────────────────────────────────────────────────
+const optionsBtn = document.getElementById('options-btn');
+const dropdown = document.getElementById('gesture-dropdown');
+
+optionsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  getCtx();
+  dropdown.classList.toggle('open');
+  optionsBtn.classList.toggle('active', dropdown.classList.contains('open'));
+});
+
+document.querySelectorAll('.dropdown-item[data-gesture]').forEach(item => {
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const g = item.dataset.gesture;
+    if (g === 'all') {
+      enabledGestures = new Set(['tongue','duck','gun','heart']);
+      document.querySelectorAll('.dropdown-item[data-gesture]').forEach(i => {
+        i.classList.toggle('selected', i.dataset.gesture === 'all' || i.dataset.gesture !== 'all');
+      });
+    } else {
+      document.querySelector('.dropdown-item[data-gesture="all"]').classList.remove('selected');
+      if (enabledGestures.has(g)) { enabledGestures.delete(g); item.classList.remove('selected'); }
+      else { enabledGestures.add(g); item.classList.add('selected'); }
+    }
+  });
+});
+
+// Mark all selected by default
+document.querySelectorAll('.dropdown-item[data-gesture]').forEach(i => {
+  if (i.dataset.gesture !== 'all') i.classList.add('selected');
+});
+
+document.addEventListener('click', () => {
+  dropdown.classList.remove('open');
+  optionsBtn.classList.remove('active');
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
