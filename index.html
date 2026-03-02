@@ -57,6 +57,7 @@
     transition: all 0.2s; cursor: pointer;
   }
   .tte-btn:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3); }
+  #loading-overlay { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; z-index: 200; transition: opacity 0.6s; }
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
   .loading-title { font-size: 1rem; font-weight: 300; letter-spacing: 0.25em; color: rgba(255,255,255,0.6); }
   .loading-msg { font-size: 0.65rem; letter-spacing: 0.12em; color: rgba(255,255,255,0.3); }
@@ -142,14 +143,16 @@ const sounds = {
 };
 function playSound(key) {
   getCtx();
-  const s = sounds[key]; if (!s) return;
-  s.currentTime = 0; s.play().catch(()=>{});
+  const s = sounds[key];
+  if (!s) { console.warn('no sound for:', key); return; }
+  s.currentTime = 0;
+  s.play().catch(e => console.warn('play failed:', key, e));
 }
 function playAh()       { playSound('ah'); }
 function playQuack()    { playSound('quack'); }
 function playGunshot()  { playSound('gun'); }
 function playHeart()    { playSound('heart'); }
-function playSurprise() { if (sounds.wow) playSound('wow'); }
+function playSurprise() { playSound('fahh'); } // fallback to fahh since wow is commented out
 function playFahh()     { playSound('fahh'); }
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -452,10 +455,11 @@ document.addEventListener('click', () => {
 window.addEventListener('load', () => {
   const tte = document.getElementById('tap-to-enter');
   const overlay = document.getElementById('loading-overlay');
-  tte.addEventListener('click', () => {
-    // This click unlocks audio in the browser
-    getCtx();
-    introAudio.play().catch(()=>{});
+  tte.addEventListener('click', async () => {
+    // Unlock audio — must resume context AND play after user gesture
+    const ctx = getCtx();
+    await ctx.resume();
+    introAudio.play().catch(e => console.warn('intro audio failed:', e));
     tte.classList.add('hide');
     setTimeout(() => {
       tte.style.display = 'none';
